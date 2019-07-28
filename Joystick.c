@@ -1,169 +1,40 @@
-/*
-Nintendo Switch Fightstick - Proof-of-Concept
-
-Based on the LUFA library's Low-Level Joystick Demo
-	(C) Dean Camera
-Based on the HORI's Pokken Tournament Pro Pad design
-	(C) HORI
-
-This project implements a modified version of HORI's Pokken Tournament Pro Pad
-USB descriptors to allow for the creation of custom controllers for the
-Nintendo Switch. This also works to a limited degree on the PS3.
-
-Since System Update v3.0.0, the Nintendo Switch recognizes the Pokken
-Tournament Pro Pad as a Pro Controller. Physical design limitations prevent
-the Pokken Controller from functioning at the same level as the Pro
-Controller. However, by default most of the descriptors are there, with the
-exception of Home and Capture. Descriptor modification allows us to unlock
-these buttons for our use.
-*/
-
 #include "Joystick.h"
+#include <stdint.h>
 
-typedef enum {
-	UP,
-	DOWN,
-	LEFT,
-	RIGHT,
-	X,
-	Y,
-	A,
-	B,
-	L,
-	R,
-	THROW,
-	NOTHING,
-	TRIGGERS,
-	BUMPERS
-} Buttons_t;
 
-typedef struct {
-	Buttons_t button;
-	uint16_t duration;
-} command; 
-
-static const command step[] = {
-	// Setup controller
-	{ NOTHING,  250 },
-	{ TRIGGERS,   5 },
-	{ NOTHING,  150 },
-	{ TRIGGERS,   5 },
-	{ NOTHING,  150 },
-	{ A,          5 },
-	{ NOTHING,  250 },
-
-	// Loop Start
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-	{ LEFT,          1 }, 
-	{ RIGHT,         1 }, 
-	{ BUMPERS,       1 }, 
-};
-
-// Main entry point.
-int main(void) {
-	// We'll start by performing hardware and peripheral setup.
-	SetupHardware();
-	// We'll then enable global interrupts for our use.
-	GlobalInterruptEnable();
-	// Once that's done, we'll enter an infinite loop.
-	for (;;)
-	{
-		// We need to run our task to process and deliver data for our IN and OUT endpoints.
-		HID_Task();
-		// We also need to run the main USB management task.
-		USB_USBTask();
-	}
+void new_loopforever(state_t* state, const command* coms, size_t n_coms) {
+    state->commands = coms;
+    state->n_commands = n_coms;
+    state->current = 0;
+    state->repeated = 0;
+    state->loop_type = LOOP_FOREVER;
 }
 
-// Configures hardware and peripherals, such as the USB peripherals.
-void SetupHardware(void) {
-	// We need to disable watchdog if enabled by bootloader/fuses.
-	MCUSR &= ~(1 << WDRF);
-	wdt_disable();
-
-	// We need to disable clock division before initializing the USB hardware.
-	clock_prescale_set(clock_div_1);
-	// We can then initialize our hardware and peripherals, including the USB stack.
-
-	#ifdef ALERT_WHEN_DONE
-	// Both PORTD and PORTB will be used for the optional LED flashing and buzzer.
-	#warning LED and Buzzer functionality enabled. All pins on both PORTB and \
-PORTD will toggle when printing is done.
-	DDRD  = 0xFF; //Teensy uses PORTD
-	PORTD =  0x0;
-                  //We'll just flash all pins on both ports since the UNO R3
-	DDRB  = 0xFF; //uses PORTB. Micro can use either or, but both give us 2 LEDs
-	PORTB =  0x0; //The ATmega328P on the UNO will be resetting, so unplug it?
-	#endif
-	// The USB stack should be initialized last.
-	USB_Init();
+void new_n(state_t* state, const command* coms, size_t n_coms, uint32_t times, finish_callback_f* f, void* arg) {
+    state->commands = coms;
+    state->n_commands = n_coms;
+    state->current = 0;
+    state->repeated = 0;
+    state->loop_type = LOOP_N;
+    state->times = times;
+    state->callback_f = f;
+    state->cb_arg = arg;
 }
 
-// Fired to indicate that the device is enumerating.
-void EVENT_USB_Device_Connect(void) {
-	// We can indicate that we're enumerating here (via status LEDs, sound, etc.).
-}
-
-// Fired to indicate that the device is no longer connected to a host.
-void EVENT_USB_Device_Disconnect(void) {
-	// We can indicate that our device is not ready (via status LEDs, sound, etc.).
-}
-
-// Fired when the host set the current configuration of the USB device after enumeration.
-void EVENT_USB_Device_ConfigurationChanged(void) {
-	bool ConfigSuccess = true;
-
-	// We setup the HID report endpoints.
-	ConfigSuccess &= Endpoint_ConfigureEndpoint(JOYSTICK_OUT_EPADDR, EP_TYPE_INTERRUPT, JOYSTICK_EPSIZE, 1);
-	ConfigSuccess &= Endpoint_ConfigureEndpoint(JOYSTICK_IN_EPADDR, EP_TYPE_INTERRUPT, JOYSTICK_EPSIZE, 1);
-
-	// We can read ConfigSuccess to indicate a success or failure at this point.
-}
-
-// Process control requests sent to the device from the USB host.
-void EVENT_USB_Device_ControlRequest(void) {
-	// We can handle two control requests: a GetReport and a SetReport.
-
-	// Not used here, it looks like we don't receive control request from the Switch.
-}
 
 // Process and deliver data from IN and OUT endpoints.
-void HID_Task(void) {
+void HID_Task(state_t* state) {
 	// If the device isn't connected and properly configured, we can't do anything here.
-	if (USB_DeviceState != DEVICE_STATE_Configured)
+    if (USB_DeviceState != DEVICE_STATE_Configured) {
 		return;
+    }
 
 	// We'll start with the OUT endpoint.
 	Endpoint_SelectEndpoint(JOYSTICK_OUT_EPADDR);
 	// We'll check to see if we received something on the OUT endpoint.
-	if (Endpoint_IsOUTReceived())
-	{
+	if (Endpoint_IsOUTReceived()) {
 		// If we did, and the packet has data, we'll react to it.
-		if (Endpoint_IsReadWriteAllowed())
-		{
+        if (Endpoint_IsReadWriteAllowed()) {
 			// We'll create a place to store our data received from the host.
 			USB_JoystickReport_Output_t JoystickOutputData;
 			// We'll then take in that data, setting it up in our storage.
@@ -179,18 +50,151 @@ void HID_Task(void) {
 	// We'll then move on to the IN endpoint.
 	Endpoint_SelectEndpoint(JOYSTICK_IN_EPADDR);
 	// We first check to see if the host is ready to accept data.
-	if (Endpoint_IsINReady())
-	{
+    if (Endpoint_IsINReady()) {
 		// We'll create an empty report.
 		USB_JoystickReport_Input_t JoystickInputData;
 		// We'll then populate this report with what we want to send to the host.
-		GetNextReport(&JoystickInputData);
+		GetNextReport(state, &JoystickInputData);
 		// Once populated, we can output this data to the host. We do this by first writing the data to the control stream.
 		while(Endpoint_Write_Stream_LE(&JoystickInputData, sizeof(JoystickInputData), NULL) != ENDPOINT_RWSTREAM_NoError);
 		// We then send an IN packet on this endpoint.
 		Endpoint_ClearIN();
 	}
 }
+
+
+void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
+    // Prepare an empty report
+    memset(ReportData, 0, sizeof(USB_JoystickReport_Input_t));
+    ReportData->LX = STICK_CENTER;
+    ReportData->LY = STICK_CENTER;
+    ReportData->RX = STICK_CENTER;
+    ReportData->RY = STICK_CENTER;
+    ReportData->HAT = HAT_CENTER;
+
+    const command* com = &state->commands[state->current];
+    Buttons_t but = com->button;
+
+    // TODO - Decide whether or not to ECHOES here.
+    
+    if (but == GENERIC) but = com->cb(state, com->cb_arg);
+    
+    switch (com->button) {
+		case UP:
+			ReportData->LY = STICK_MIN;				
+			break;
+
+		case LEFT:
+			ReportData->LX = STICK_MIN;				
+			break;
+
+		case DOWN:
+			ReportData->LY = STICK_MAX;				
+			break;
+
+		case RIGHT:
+			ReportData->LX = STICK_MAX;				
+			break;
+
+		case A:
+			ReportData->Button |= SWITCH_A;
+			break;
+
+		case B:
+			ReportData->Button |= SWITCH_B;
+			break;
+
+		case R:
+			ReportData->Button |= SWITCH_R;
+			break;
+
+		case THROW:
+			ReportData->LY = STICK_MIN;				
+			ReportData->Button |= SWITCH_R;
+			break;
+
+		case TRIGGERS:
+			ReportData->Button |= SWITCH_L | SWITCH_R;
+			break;
+
+		case BUMPERS:
+			ReportData->Button |= SWITCH_ZL | SWITCH_ZR;
+			break;
+        
+		default:
+			ReportData->LX = STICK_CENTER;
+			ReportData->LY = STICK_CENTER;
+			ReportData->RX = STICK_CENTER;
+			ReportData->RY = STICK_CENTER;
+			ReportData->HAT = HAT_CENTER;
+			break;
+    }
+    
+    if (++(state->repeated) == com->duration) {
+        state->repeated = 0;
+        state->current++;
+        if (state->current == state->n_commands) {
+            state->current = 0;
+            switch (state->loop_type) {
+                case LOOP_FOREVER:
+                    break;
+                case LOOP_N:
+                    if (--(state->times) == 0) {
+                        state->callback_f(state, state->cb_arg);
+                    }
+                    break;
+            }
+        }    
+    }
+}
+
+static const command command_setup[] = {
+	// Setup controller
+    PRESS(NOTHING,  500),
+    PRESS(TRIGGERS,   2),
+    PRESS(NOTHING,   98),
+    PRESS(TRIGGERS,   2),
+    PRESS(NOTHING,   48),
+    PRESS(TRIGGERS,   2),
+    PRESS(NOTHING,   48),
+    PRESS(A,          2),
+    PRESS(NOTHING,   48),
+    PRESS(A,          2),
+    PRESS(NOTHING,   48),
+    PRESS(A,          2),
+    PRESS(NOTHING,  298),
+};
+
+static const command randomDI_airdodge[] = {
+	// Loop Start
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1), 
+	PRESS(LEFT,          1), 
+	PRESS(RIGHT,         1), 
+	PRESS(BUMPERS,       1),
+};
 
 typedef enum {
 	SYNC_CONTROLLER,
@@ -202,198 +206,116 @@ typedef enum {
 } State_t;
 State_t state = SYNC_CONTROLLER;
 
-#define ECHOES 2
-int echoes = 0;
-USB_JoystickReport_Input_t last_report;
+COM_FOREVER_F(randomDI_airdodge)
 
-int report_count = 0;
-int xpos = 0;
-int ypos = 0;
-int bufindex = 0;
-int duration_count = 0;
-int portsval = 0;
+/*** Debounce ****
+The following is some -really bad- debounce code. I have a more robust library
+that I've used in other personal projects that would be a much better use
+here, especially considering that this is a stick indented for use with arcade
+fighters.
+This code exists solely to actually test on. This will eventually be replaced.
+**** Debounce ***/
+// Quick debounce hackery!
+// We're going to capture each port separately and store the contents into a 32-bit value.
+uint32_t pb_debounce = 0;
+uint32_t pd_debounce = 0;
 
-// Prepare the next report for the host.
-void GetNextReport(USB_JoystickReport_Input_t* const ReportData) {
+// We also need a port state capture. We'll use a 16-bit value for this.
+uint16_t bd_state = 0;
 
-	// Prepare an empty report
-	memset(ReportData, 0, sizeof(USB_JoystickReport_Input_t));
-	ReportData->LX = STICK_CENTER;
-	ReportData->LY = STICK_CENTER;
-	ReportData->RX = STICK_CENTER;
-	ReportData->RY = STICK_CENTER;
-	ReportData->HAT = HAT_CENTER;
+// We'll also give us some useful macros here.
+#define PINB_DEBOUNCED ((bd_state >> 0) & 0xFF)
+#define PIND_DEBOUNCED ((bd_state >> 8) & 0xFF) 
 
-	// Repeat ECHOES times the last report
-	if (echoes > 0)
-	{
-		memcpy(ReportData, &last_report, sizeof(USB_JoystickReport_Input_t));
-		echoes--;
-		return;
+// So let's do some debounce! Lazily, and really poorly.
+void debounce_ports(void) {
+	// We'll shift the current value of the debounce down one set of 8 bits. We'll also read in the state of the pins.
+	pb_debounce = (pb_debounce << 8) + PINB;
+	pd_debounce = (pd_debounce << 8) + PIND;
+
+	// We'll then iterate through a simple for loop.
+	for (int i = 0; i < 8; i++) {
+		if ((pb_debounce & (0x1010101 << i)) == (0x1010101 << i)) // wat
+			bd_state |= (1 << i);
+		else if ((pb_debounce & (0x1010101 << i)) == (0))
+			bd_state &= ~(uint16_t)(1 << i);
+
+		if ((pd_debounce & (0x1010101 << i)) == (0x1010101 << i))
+			bd_state |= (1 << (8 + i));
+		else if ((pd_debounce & (0x1010101 << i)) == (0))
+			bd_state &= ~(uint16_t)(1 << (8 + i));
 	}
+}
 
-	// States and moves management
-	switch (state)
-	{
+int main(void) {
+    // We'll start by performing hardware and peripheral setup.
+    SetupHardware();
+    // We'll then enable global interrupts for our use.
+    GlobalInterruptEnable();
+    // Once that's done, we'll enter an infinite loop.
 
-		case SYNC_CONTROLLER:
-			state = BREATHE;
-			break;
+    state_t state;
+    new_n(&state, command_setup, countof(command_setup), 1, &randomDI_airdodge_forever, NULL);
+    for (;;) {
+		// We need to run our task to process and deliver data for our IN and OUT endpoints.
+		HID_Task(&state);
+		// We also need to run the main USB management task.
+		USB_USBTask();
 
-		// case SYNC_CONTROLLER:
-		// 	if (report_count > 550)
-		// 	{
-		// 		report_count = 0;
-		// 		state = SYNC_POSITION;
-		// 	}
-		// 	else if (report_count == 250 || report_count == 300 || report_count == 325)
-		// 	{
-		// 		ReportData->Button |= SWITCH_L | SWITCH_R;
-		// 	}
-		// 	else if (report_count == 350 || report_count == 375 || report_count == 400)
-		// 	{
-		// 		ReportData->Button |= SWITCH_A;
-		// 	}
-		// 	else
-		// 	{
-		// 		ReportData->Button = 0;
-		// 		ReportData->LX = STICK_CENTER;
-		// 		ReportData->LY = STICK_CENTER;
-		// 		ReportData->RX = STICK_CENTER;
-		// 		ReportData->RY = STICK_CENTER;
-		// 		ReportData->HAT = HAT_CENTER;
-		// 	}
-		// 	report_count++;
-		// 	break;
-
-		case SYNC_POSITION:
-			bufindex = 0;
-
-
-			ReportData->Button = 0;
-			ReportData->LX = STICK_CENTER;
-			ReportData->LY = STICK_CENTER;
-			ReportData->RX = STICK_CENTER;
-			ReportData->RY = STICK_CENTER;
-			ReportData->HAT = HAT_CENTER;
-
-
-			state = BREATHE;
-			break;
-
-		case BREATHE:
-			state = PROCESS;
-			break;
-
-		case PROCESS:
-
-			switch (step[bufindex].button)
-			{
-
-				case UP:
-					ReportData->LY = STICK_MIN;				
-					break;
-
-				case LEFT:
-					ReportData->LX = STICK_MIN;				
-					break;
-
-				case DOWN:
-					ReportData->LY = STICK_MAX;				
-					break;
-
-				case RIGHT:
-					ReportData->LX = STICK_MAX;				
-					break;
-
-				case A:
-					ReportData->Button |= SWITCH_A;
-					break;
-
-				case B:
-					ReportData->Button |= SWITCH_B;
-					break;
-
-				case R:
-					ReportData->Button |= SWITCH_R;
-					break;
-
-				case THROW:
-					ReportData->LY = STICK_MIN;				
-					ReportData->Button |= SWITCH_R;
-					break;
-
-				case TRIGGERS:
-					ReportData->Button |= SWITCH_L | SWITCH_R;
-					break;
-
-				case BUMPERS:
-					ReportData->Button |= SWITCH_ZL | SWITCH_ZR;
-					break;
-
-				default:
-					ReportData->LX = STICK_CENTER;
-					ReportData->LY = STICK_CENTER;
-					ReportData->RX = STICK_CENTER;
-					ReportData->RY = STICK_CENTER;
-					ReportData->HAT = HAT_CENTER;
-					break;
-			}
-
-			duration_count++;
-
-			if (duration_count > step[bufindex].duration)
-			{
-				bufindex++;
-				duration_count = 0;				
-			}
-
-
-			if (bufindex > (int)( sizeof(step) / sizeof(step[0])) - 1)
-			{
-
-				// state = CLEANUP;
-
-				bufindex = 7;
-				duration_count = 0;
-
-				state = BREATHE;
-
-				ReportData->LX = STICK_CENTER;
-				ReportData->LY = STICK_CENTER;
-				ReportData->RX = STICK_CENTER;
-				ReportData->RY = STICK_CENTER;
-				ReportData->HAT = HAT_CENTER;
-
-
-				// state = DONE;
-//				state = BREATHE;
-
-			}
-
-			break;
-
-		case CLEANUP:
-			state = DONE;
-			break;
-
-		case DONE:
-			#ifdef ALERT_WHEN_DONE
-			portsval = ~portsval;
-			PORTD = portsval; //flash LED(s) and sound buzzer if attached
-			PORTB = portsval;
-			_delay_ms(250);
-			#endif
-			return;
+		// As part of this loop, we'll also run our bad debounce code.
+		// Optimally, we should replace this with something that fires on a timer.
+		debounce_ports();		
 	}
+}
 
-	// // Inking
-	// if (state != SYNC_CONTROLLER && state != SYNC_POSITION)
-	// 	if (pgm_read_byte(&(image_data[(xpos / 8) + (ypos * 40)])) & 1 << (xpos % 8))
-	// 		ReportData->Button |= SWITCH_A;
+// Configures hardware and peripherals, such as the USB peripherals.
+void SetupHardware(void) {
+    // We need to disable watchdog if enabled by bootloader/fuses.
+    MCUSR &= ~(1 << WDRF);
+    wdt_disable();
 
-	// Prepare to echo this report
-	memcpy(&last_report, ReportData, sizeof(USB_JoystickReport_Input_t));
-	echoes = ECHOES;
+    // We need to disable clock division before initializing the USB hardware.
+    clock_prescale_set(clock_div_1);
+    // We can then initialize our hardware and peripherals, including the USB stack.
 
+    #ifdef ALERT_WHEN_DONE
+    // Both PORTD and PORTB will be used for the optional LED flashing and buzzer.
+    #warning LED and Buzzer functionality enabled. All pins on both PORTB and \
+PORTD will toggle when printing is done.
+    DDRD  = 0xFF; //Teensy uses PORTD
+    PORTD =  0x0;
+    //We'll just flash all pins on both ports since the UNO R3
+    DDRB  = 0xFF; //uses PORTB. Micro can use either or, but both give us 2 LEDs
+    PORTB =  0x0; //The ATmega328P on the UNO will be resetting, so unplug it?
+    #endif
+    // The USB stack should be initialized last.
+    USB_Init();
+}
+
+// Fired to indicate that the device is enumerating.
+void EVENT_USB_Device_Connect(void) {
+    // We can indicate that we're enumerating here (via status LEDs, sound, etc.).
+}
+
+// Fired to indicate that the device is no longer connected to a host.
+void EVENT_USB_Device_Disconnect(void) {
+    // We can indicate that our device is not ready (via status LEDs, sound, etc.).
+}
+
+// Fired when the host set the current configuration of the USB device after enumeration.
+void EVENT_USB_Device_ConfigurationChanged(void) {
+    bool ConfigSuccess = true;
+
+    // We setup the HID report endpoints.
+    ConfigSuccess &= Endpoint_ConfigureEndpoint(JOYSTICK_OUT_EPADDR, EP_TYPE_INTERRUPT, JOYSTICK_EPSIZE, 1);
+    ConfigSuccess &= Endpoint_ConfigureEndpoint(JOYSTICK_IN_EPADDR, EP_TYPE_INTERRUPT, JOYSTICK_EPSIZE, 1);
+
+    // We can read ConfigSuccess to indicate a success or failure at this point.
+}
+
+// Process control requests sent to the device from the USB host.
+void EVENT_USB_Device_ControlRequest(void) {
+    // We can handle two control requests: a GetReport and a SetReport.
+
+    // Not used here, it looks like we don't receive control request from the Switch.
 }

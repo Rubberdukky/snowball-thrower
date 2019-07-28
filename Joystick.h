@@ -85,6 +85,63 @@ typedef enum {
 #define STICK_CENTER 128
 #define STICK_MAX    255
 
+#define countof(X) (sizeof((X)) / sizeof((X)[0]))
+
+struct state_s;
+
+typedef enum {
+	UP,
+	DOWN,
+	LEFT,
+	RIGHT,
+	X,
+	Y,
+	A,
+	B,
+	L,
+	R,
+	THROW,
+	NOTHING,
+	TRIGGERS,
+	BUMPERS,
+    GENERIC,
+} Buttons_t;
+
+typedef Buttons_t generic_callback(struct state_s* state, void* cb_arg);
+
+typedef struct {
+	Buttons_t button;
+	uint16_t duration;
+    generic_callback* cb;
+    void* cb_arg;
+} command; 
+
+#define PRESS(B, T) { B, T, NULL, NULL }
+#define GENERIC(T, F, A) {GENERIC, T, F, A}
+
+typedef void finish_callback_f(struct state_s* state, void* cb_arg);
+
+enum loop_type_e {
+    LOOP_FOREVER = 1,
+    LOOP_N = 2,
+};
+
+typedef struct state_s {
+    const command* commands;
+    size_t n_commands;
+    size_t current;
+    enum loop_type_e loop_type;
+    uint32_t times;
+    uint16_t repeated;
+    finish_callback_f* callback_f;
+    void* cb_arg;
+} state_t;
+
+#define COM_FOREVER_F(C)\
+void C ## _forever(struct state_s* state, void* cb_arg) {\
+   new_loopforever(state, C, countof(C));\
+}
+
 // Joystick HID report structure. We have an input and an output.
 typedef struct {
 	uint16_t Button; // 16 buttons; see JoystickButtons_t for bit mapping
@@ -111,13 +168,13 @@ typedef struct {
 // Setup all necessary hardware, including USB initialization.
 void SetupHardware(void);
 // Process and deliver data from IN and OUT endpoints.
-void HID_Task(void);
+void HID_Task(state_t* state);
 // USB device event handlers.
 void EVENT_USB_Device_Connect(void);
 void EVENT_USB_Device_Disconnect(void);
 void EVENT_USB_Device_ConfigurationChanged(void);
 void EVENT_USB_Device_ControlRequest(void);
 // Prepare the next report for the host.
-void GetNextReport(USB_JoystickReport_Input_t* const ReportData);
+void GetNextReport(state_t* state, USB_JoystickReport_Input_t* const ReportData);
 
 #endif
