@@ -163,34 +163,31 @@ static const command command_setup[] = {
 };
 
 static const command randomDI_airdodge[] = {
-    // Loop Start
     PRESS(LEFT,          1),
     PRESS(RIGHT,         1),
     PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
+};
+
+static const command rightDI_airdodge[] = {
     PRESS(RIGHT,         1),
     PRESS(BUMPERS,       1),
+};
+
+static const command leftDI_airdodge[] = {
     PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
     PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
-    PRESS(LEFT,          1),
-    PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
+};
+
+static const command* program_order[] = {
+    randomDI_airdodge,
+    leftDI_airdodge,
+    rightDI_airdodge,
+};
+
+static const size_t program_sizes[] = {
+    countof(randomDI_airdodge),
+    countof(leftDI_airdodge),
+    countof(rightDI_airdodge),
 };
 
 typedef enum {
@@ -214,15 +211,14 @@ This code exists solely to actually test on. This will eventually be replaced.
 **** Debounce ***/
 // Quick debounce hackery!
 // We're going to capture each port separately and store the contents into a 32-bit value.
-uint32_t pb_debounce = 0;
-uint32_t pd_debounce = 0;
+volatile uint32_t pb_debounce = 0;
+volatile uint32_t pd_debounce = 0;
 
 // We also need a port state capture. We'll use a 16-bit value for this.
 uint16_t bd_state = 0;
 
 // We'll also give us some useful macros here.
 #define PINB_DEBOUNCED ((bd_state >> 0) & 0xFF)
-#define PIND_DEBOUNCED ((bd_state >> 8) & 0xFF)
 
 // So let's do some debounce! Lazily, and really poorly.
 void debounce_ports(void) {
@@ -249,8 +245,12 @@ int main(void) {
     SetupHardware();
     // We'll then enable global interrupts for our use.
     GlobalInterruptEnable();
-    // Once that's done, we'll enter an infinite loop.
 
+    int edge = 0;
+    uint16_t new_button = (~PINB_DEBOUNCED & (1 << 3));
+    uint16_t previous_button = new_button;
+
+    uint16_t program_index = 0;
     state_t state;
     new_n(&state, command_setup, countof(command_setup), 1, &randomDI_airdodge_forever, NULL);
     for (;;) {
@@ -262,6 +262,17 @@ int main(void) {
         // As part of this loop, we'll also run our bad debounce code.
         // Optimally, we should replace this with something that fires on a timer.
         debounce_ports();
+
+        previous_button = new_button;
+        new_button = (~PINB_DEBOUNCED & (1 << 3));
+
+        if ((previous_button ^ new_button) && (edge = ~edge)) {
+            // User button input detected. Increasing mode counter.
+            program_index++;
+            const command* next_coms = program_order[program_index % countof(program_order)];
+            const size_t next_coms_size = program_sizes[program_index % countof(program_sizes)];
+            new_loopforever(&state, next_coms, next_coms_size);
+        }
     }
 }
 
@@ -285,6 +296,7 @@ PORTD will toggle when printing is done.
     DDRB  = 0xFF; //uses PORTB. Micro can use either or, but both give us 2 LEDs
     PORTB =  0x0; //The ATmega328P on the UNO will be resetting, so unplug it?
     #endif
+
     // The USB stack should be initialized last.
     USB_Init();
 }
