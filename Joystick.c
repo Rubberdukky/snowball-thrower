@@ -1,7 +1,6 @@
 #include "Joystick.h"
 #include <stdint.h>
 
-
 void new_loopforever(state_t* state, const command* coms, size_t n_coms) {
     state->commands = coms;
     state->n_commands = n_coms;
@@ -21,47 +20,45 @@ void new_n(state_t* state, const command* coms, size_t n_coms, uint32_t times, f
     state->cb_arg = arg;
 }
 
-
 // Process and deliver data from IN and OUT endpoints.
 void HID_Task(state_t* state) {
-	// If the device isn't connected and properly configured, we can't do anything here.
+    // If the device isn't connected and properly configured, we can't do anything here.
     if (USB_DeviceState != DEVICE_STATE_Configured) {
-		return;
+        return;
     }
 
-	// We'll start with the OUT endpoint.
-	Endpoint_SelectEndpoint(JOYSTICK_OUT_EPADDR);
-	// We'll check to see if we received something on the OUT endpoint.
-	if (Endpoint_IsOUTReceived()) {
-		// If we did, and the packet has data, we'll react to it.
+    // We'll start with the OUT endpoint.
+    Endpoint_SelectEndpoint(JOYSTICK_OUT_EPADDR);
+    // We'll check to see if we received something on the OUT endpoint.
+    if (Endpoint_IsOUTReceived()) {
+        // If we did, and the packet has data, we'll react to it.
         if (Endpoint_IsReadWriteAllowed()) {
-			// We'll create a place to store our data received from the host.
-			USB_JoystickReport_Output_t JoystickOutputData;
-			// We'll then take in that data, setting it up in our storage.
-			while(Endpoint_Read_Stream_LE(&JoystickOutputData, sizeof(JoystickOutputData), NULL) != ENDPOINT_RWSTREAM_NoError);
-			// At this point, we can react to this data.
+            // We'll create a place to store our data received from the host.
+            USB_JoystickReport_Output_t JoystickOutputData;
+            // We'll then take in that data, setting it up in our storage.
+            while(Endpoint_Read_Stream_LE(&JoystickOutputData, sizeof(JoystickOutputData), NULL) != ENDPOINT_RWSTREAM_NoError);
+            // At this point, we can react to this data.
 
-			// However, since we're not doing anything with this data, we abandon it.
-		}
-		// Regardless of whether we reacted to the data, we acknowledge an OUT packet on this endpoint.
-		Endpoint_ClearOUT();
-	}
+            // However, since we're not doing anything with this data, we abandon it.
+        }
+        // Regardless of whether we reacted to the data, we acknowledge an OUT packet on this endpoint.
+        Endpoint_ClearOUT();
+    }
 
-	// We'll then move on to the IN endpoint.
-	Endpoint_SelectEndpoint(JOYSTICK_IN_EPADDR);
-	// We first check to see if the host is ready to accept data.
+    // We'll then move on to the IN endpoint.
+    Endpoint_SelectEndpoint(JOYSTICK_IN_EPADDR);
+    // We first check to see if the host is ready to accept data.
     if (Endpoint_IsINReady()) {
-		// We'll create an empty report.
-		USB_JoystickReport_Input_t JoystickInputData;
-		// We'll then populate this report with what we want to send to the host.
-		GetNextReport(state, &JoystickInputData);
-		// Once populated, we can output this data to the host. We do this by first writing the data to the control stream.
-		while(Endpoint_Write_Stream_LE(&JoystickInputData, sizeof(JoystickInputData), NULL) != ENDPOINT_RWSTREAM_NoError);
-		// We then send an IN packet on this endpoint.
-		Endpoint_ClearIN();
-	}
+        // We'll create an empty report.
+        USB_JoystickReport_Input_t JoystickInputData;
+        // We'll then populate this report with what we want to send to the host.
+        GetNextReport(state, &JoystickInputData);
+        // Once populated, we can output this data to the host. We do this by first writing the data to the control stream.
+        while(Endpoint_Write_Stream_LE(&JoystickInputData, sizeof(JoystickInputData), NULL) != ENDPOINT_RWSTREAM_NoError);
+        // We then send an IN packet on this endpoint.
+        Endpoint_ClearIN();
+    }
 }
-
 
 void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
     // Prepare an empty report
@@ -76,60 +73,60 @@ void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
     Buttons_t but = com->button;
 
     // TODO - Decide whether or not to ECHOES here.
-    
+
     if (but == GENERIC) but = com->cb(state, com->cb_arg);
-    
+
     switch (com->button) {
-		case UP:
-			ReportData->LY = STICK_MIN;				
-			break;
+        case UP:
+            ReportData->LY = STICK_MIN;
+            break;
 
-		case LEFT:
-			ReportData->LX = STICK_MIN;				
-			break;
+        case LEFT:
+            ReportData->LX = STICK_MIN;
+            break;
 
-		case DOWN:
-			ReportData->LY = STICK_MAX;				
-			break;
+        case DOWN:
+            ReportData->LY = STICK_MAX;
+            break;
 
-		case RIGHT:
-			ReportData->LX = STICK_MAX;				
-			break;
+        case RIGHT:
+            ReportData->LX = STICK_MAX;
+            break;
 
-		case A:
-			ReportData->Button |= SWITCH_A;
-			break;
+        case A:
+            ReportData->Button |= SWITCH_A;
+            break;
 
-		case B:
-			ReportData->Button |= SWITCH_B;
-			break;
+        case B:
+            ReportData->Button |= SWITCH_B;
+            break;
 
-		case R:
-			ReportData->Button |= SWITCH_R;
-			break;
+        case R:
+            ReportData->Button |= SWITCH_R;
+            break;
 
-		case THROW:
-			ReportData->LY = STICK_MIN;				
-			ReportData->Button |= SWITCH_R;
-			break;
+        case THROW:
+            ReportData->LY = STICK_MIN;
+            ReportData->Button |= SWITCH_R;
+            break;
 
-		case TRIGGERS:
-			ReportData->Button |= SWITCH_L | SWITCH_R;
-			break;
+        case TRIGGERS:
+            ReportData->Button |= SWITCH_L | SWITCH_R;
+            break;
 
-		case BUMPERS:
-			ReportData->Button |= SWITCH_ZL | SWITCH_ZR;
-			break;
-        
-		default:
-			ReportData->LX = STICK_CENTER;
-			ReportData->LY = STICK_CENTER;
-			ReportData->RX = STICK_CENTER;
-			ReportData->RY = STICK_CENTER;
-			ReportData->HAT = HAT_CENTER;
-			break;
+        case BUMPERS:
+            ReportData->Button |= SWITCH_ZL | SWITCH_ZR;
+            break;
+
+        default:
+            ReportData->LX = STICK_CENTER;
+            ReportData->LY = STICK_CENTER;
+            ReportData->RX = STICK_CENTER;
+            ReportData->RY = STICK_CENTER;
+            ReportData->HAT = HAT_CENTER;
+            break;
     }
-    
+
     if (++(state->repeated) == com->duration) {
         state->repeated = 0;
         state->current++;
@@ -144,12 +141,12 @@ void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
                     }
                     break;
             }
-        }    
+        }
     }
 }
 
 static const command command_setup[] = {
-	// Setup controller
+    // Setup controller
     PRESS(NOTHING,  500),
     PRESS(TRIGGERS,   2),
     PRESS(NOTHING,   98),
@@ -166,43 +163,43 @@ static const command command_setup[] = {
 };
 
 static const command randomDI_airdodge[] = {
-	// Loop Start
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1), 
-	PRESS(LEFT,          1), 
-	PRESS(RIGHT,         1), 
-	PRESS(BUMPERS,       1),
+    // Loop Start
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
+    PRESS(LEFT,          1),
+    PRESS(RIGHT,         1),
+    PRESS(BUMPERS,       1),
 };
 
 typedef enum {
-	SYNC_CONTROLLER,
-	SYNC_POSITION,
-	BREATHE,
-	PROCESS,
-	CLEANUP,
-	DONE
+    SYNC_CONTROLLER,
+    SYNC_POSITION,
+    BREATHE,
+    PROCESS,
+    CLEANUP,
+    DONE
 } State_t;
 State_t state = SYNC_CONTROLLER;
 
@@ -225,26 +222,26 @@ uint16_t bd_state = 0;
 
 // We'll also give us some useful macros here.
 #define PINB_DEBOUNCED ((bd_state >> 0) & 0xFF)
-#define PIND_DEBOUNCED ((bd_state >> 8) & 0xFF) 
+#define PIND_DEBOUNCED ((bd_state >> 8) & 0xFF)
 
 // So let's do some debounce! Lazily, and really poorly.
 void debounce_ports(void) {
-	// We'll shift the current value of the debounce down one set of 8 bits. We'll also read in the state of the pins.
-	pb_debounce = (pb_debounce << 8) + PINB;
-	pd_debounce = (pd_debounce << 8) + PIND;
+    // We'll shift the current value of the debounce down one set of 8 bits. We'll also read in the state of the pins.
+    pb_debounce = (pb_debounce << 8) + PINB;
+    pd_debounce = (pd_debounce << 8) + PIND;
 
-	// We'll then iterate through a simple for loop.
-	for (int i = 0; i < 8; i++) {
-		if ((pb_debounce & (0x1010101 << i)) == (0x1010101 << i)) // wat
-			bd_state |= (1 << i);
-		else if ((pb_debounce & (0x1010101 << i)) == (0))
-			bd_state &= ~(uint16_t)(1 << i);
+    // We'll then iterate through a simple for loop.
+    for (int i = 0; i < 8; i++) {
+        if ((pb_debounce & (0x1010101 << i)) == (0x1010101 << i)) // wat
+            bd_state |= (1 << i);
+        else if ((pb_debounce & (0x1010101 << i)) == (0))
+            bd_state &= ~(uint16_t)(1 << i);
 
-		if ((pd_debounce & (0x1010101 << i)) == (0x1010101 << i))
-			bd_state |= (1 << (8 + i));
-		else if ((pd_debounce & (0x1010101 << i)) == (0))
-			bd_state &= ~(uint16_t)(1 << (8 + i));
-	}
+        if ((pd_debounce & (0x1010101 << i)) == (0x1010101 << i))
+            bd_state |= (1 << (8 + i));
+        else if ((pd_debounce & (0x1010101 << i)) == (0))
+            bd_state &= ~(uint16_t)(1 << (8 + i));
+    }
 }
 
 int main(void) {
@@ -257,15 +254,15 @@ int main(void) {
     state_t state;
     new_n(&state, command_setup, countof(command_setup), 1, &randomDI_airdodge_forever, NULL);
     for (;;) {
-		// We need to run our task to process and deliver data for our IN and OUT endpoints.
-		HID_Task(&state);
-		// We also need to run the main USB management task.
-		USB_USBTask();
+        // We need to run our task to process and deliver data for our IN and OUT endpoints.
+        HID_Task(&state);
+        // We also need to run the main USB management task.
+        USB_USBTask();
 
-		// As part of this loop, we'll also run our bad debounce code.
-		// Optimally, we should replace this with something that fires on a timer.
-		debounce_ports();		
-	}
+        // As part of this loop, we'll also run our bad debounce code.
+        // Optimally, we should replace this with something that fires on a timer.
+        debounce_ports();
+    }
 }
 
 // Configures hardware and peripherals, such as the USB peripherals.
