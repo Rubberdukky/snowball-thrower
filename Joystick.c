@@ -118,6 +118,10 @@ void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
             ReportData->Button |= SWITCH_ZL | SWITCH_ZR;
             break;
 
+        case LEFT_BUMPER:
+            ReportData->Button |= SWITCH_ZL;
+            break;
+
         default:
             ReportData->LX = STICK_CENTER;
             ReportData->LY = STICK_CENTER;
@@ -178,16 +182,22 @@ static const command leftDI_airdodge[] = {
     PRESS(BUMPERS,       1),
 };
 
+static const command shield[] = {
+    PRESS(LEFT_BUMPER,       1),
+};
+
 static const command* program_order[] = {
-    randomDI_airdodge,
+    shield,
     leftDI_airdodge,
     rightDI_airdodge,
+    randomDI_airdodge,
 };
 
 static const size_t program_sizes[] = {
-    countof(randomDI_airdodge),
+    countof(shield),
     countof(leftDI_airdodge),
     countof(rightDI_airdodge),
+    countof(randomDI_airdodge),
 };
 
 typedef enum {
@@ -200,7 +210,7 @@ typedef enum {
 } State_t;
 State_t state = SYNC_CONTROLLER;
 
-COM_FOREVER_F(randomDI_airdodge)
+COM_FOREVER_F(shield)
 
 /*** Debounce ****
 The following is some -really bad- debounce code. I have a more robust library
@@ -246,14 +256,20 @@ int main(void) {
     // We'll then enable global interrupts for our use.
     GlobalInterruptEnable();
 
-    int edge = 0;
+    int button_edge = 0;
     uint16_t new_button = (~PINB_DEBOUNCED & (1 << 3));
     uint16_t previous_button = new_button;
 
+    int pedal_edge = 0;
+    uint16_t new_pedal = (~PINB_DEBOUNCED & (1 << 2));
+    uint16_t previous_pedal = new_pedal;
+
     uint16_t program_index = 0;
     state_t state;
-    new_n(&state, command_setup, countof(command_setup), 1, &randomDI_airdodge_forever, NULL);
+    new_n(&state, command_setup, countof(command_setup), 1, &shield_forever, NULL);
     for (;;) {
+        bool button_pressed = (previous_button ^ new_button) && (button_edge = ~button_edge);
+        bool pedal_pressed = (previous_pedal ^ new_pedal) && (pedal_edge = ~pedal_edge);
         // We need to run our task to process and deliver data for our IN and OUT endpoints.
         HID_Task(&state);
         // We also need to run the main USB management task.
@@ -266,7 +282,10 @@ int main(void) {
         previous_button = new_button;
         new_button = (~PINB_DEBOUNCED & (1 << 3));
 
-        if ((previous_button ^ new_button) && (edge = ~edge)) {
+        previous_pedal = new_pedal;
+        new_pedal = (~PINB_DEBOUNCED & (1 << 2));
+
+        if (button_pressed) {
             // User button input detected. Increasing mode counter.
             program_index++;
             const command* next_coms = program_order[program_index % countof(program_order)];

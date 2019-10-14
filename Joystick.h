@@ -104,6 +104,7 @@ typedef enum {
 	NOTHING,
 	TRIGGERS,
 	BUMPERS,
+	LEFT_BUMPER,
     GENERIC,
 } Buttons_t;
 
@@ -114,7 +115,7 @@ typedef struct {
 	uint16_t duration;
     generic_callback* cb;
     void* cb_arg;
-} command; 
+} command;
 
 #define PRESS(B, T) { B, T, NULL, NULL }
 #define GENERIC(T, F, A) {GENERIC, T, F, A}
