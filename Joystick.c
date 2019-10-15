@@ -105,9 +105,9 @@ void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
             ReportData->Button |= SWITCH_R;
             break;
 
-        case THROW:
-            ReportData->LY = STICK_MIN;
-            ReportData->Button |= SWITCH_R;
+        case GRAB:
+            ReportData->Button |= SWITCH_ZL;
+            ReportData->Button |= SWITCH_A;
             break;
 
         case TRIGGERS:
@@ -186,6 +186,11 @@ static const command shield[] = {
     PRESS(LEFT_BUMPER,       1),
 };
 
+static const command grab[] = {
+    PRESS(GRAB,          10),
+    PRESS(LEFT_BUMPER,    5),
+};
+
 static const command* program_order[] = {
     shield,
     leftDI_airdodge,
@@ -234,7 +239,7 @@ uint16_t bd_state = 0;
 void debounce_ports(void) {
     // We'll shift the current value of the debounce down one set of 8 bits. We'll also read in the state of the pins.
     pb_debounce = (pb_debounce << 8) + PINB;
-    pd_debounce = (pd_debounce << 8) + PIND;
+    pd_debounce = (pd_debounce << 8) + PINB;
 
     // We'll then iterate through a simple for loop.
     for (int i = 0; i < 8; i++) {
@@ -250,7 +255,20 @@ void debounce_ports(void) {
     }
 }
 
+void default_loop(struct state_s* state, uint16_t program_index) {
+    const command* next_coms = program_order[program_index % countof(program_order)];
+    const size_t next_coms_size = program_sizes[program_index % countof(program_sizes)];
+    new_loopforever(state, next_coms, next_coms_size);
+}
+
+// typedef void finish_callback_f(struct state_s* state, void* cb_arg);
+void motherfucking_callback(struct state_s* state, void* cb_arg) {
+     default_loop(state, (uint16_t)cb_arg);
+}
+
 int main(void) {
+    DDRD = 0xFF;
+
     // We'll start by performing hardware and peripheral setup.
     SetupHardware();
     // We'll then enable global interrupts for our use.
@@ -270,10 +288,6 @@ int main(void) {
     for (;;) {
         bool button_pressed = (previous_button ^ new_button) && (button_edge = ~button_edge);
         bool pedal_pressed = (previous_pedal ^ new_pedal) && (pedal_edge = ~pedal_edge);
-        // We need to run our task to process and deliver data for our IN and OUT endpoints.
-        HID_Task(&state);
-        // We also need to run the main USB management task.
-        USB_USBTask();
 
         // As part of this loop, we'll also run our bad debounce code.
         // Optimally, we should replace this with something that fires on a timer.
@@ -286,12 +300,21 @@ int main(void) {
         new_pedal = (~PINB_DEBOUNCED & (1 << 2));
 
         if (button_pressed) {
+            PORTD = ~PORTD;
             // User button input detected. Increasing mode counter.
             program_index++;
-            const command* next_coms = program_order[program_index % countof(program_order)];
-            const size_t next_coms_size = program_sizes[program_index % countof(program_sizes)];
-            new_loopforever(&state, next_coms, next_coms_size);
+            default_loop(&state, program_index);
         }
+
+        if (pedal_pressed) {
+            PORTD = ~PORTD;
+            new_n(&state, grab, countof(grab), 1, motherfucking_callback, (void*) program_index);
+        }
+
+        // We need to run our task to process and deliver data for our IN and OUT endpoints.
+        HID_Task(&state);
+        // We also need to run the main USB management task.
+        USB_USBTask();
     }
 }
 

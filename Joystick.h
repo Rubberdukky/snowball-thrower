@@ -100,7 +100,7 @@ typedef enum {
 	B,
 	L,
 	R,
-	THROW,
+	GRAB,
 	NOTHING,
 	TRIGGERS,
 	BUMPERS,
