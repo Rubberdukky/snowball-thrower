@@ -98,6 +98,7 @@ typedef enum {
 	Y,
 	A,
 	B,
+	UP_B,
 	L,
 	R,
 	GRAB,

@@ -101,6 +101,11 @@ void GetNextReport(state_t* state, USB_JoystickReport_Input_t* ReportData) {
             ReportData->Button |= SWITCH_B;
             break;
 
+        case UP_B:
+            ReportData->Button |= SWITCH_B;
+            ReportData->LY = STICK_MIN;
+            break;
+
         case R:
             ReportData->Button |= SWITCH_R;
             break;
@@ -191,18 +196,28 @@ static const command grab[] = {
     PRESS(LEFT_BUMPER,    5),
 };
 
+static const command neutral_b_held[] = {
+    PRESS(B,          300),
+    PRESS(NOTHING,    10),
+};
+
+static const command up_b_spam[] = {
+    PRESS(UP_B,    10),
+    PRESS(NOTHING, 10),
+};
+
 static const command* program_order[] = {
     shield,
-    leftDI_airdodge,
-    rightDI_airdodge,
     randomDI_airdodge,
+    neutral_b_held,
+    up_b_spam,
 };
 
 static const size_t program_sizes[] = {
     countof(shield),
-    countof(leftDI_airdodge),
-    countof(rightDI_airdodge),
     countof(randomDI_airdodge),
+    countof(neutral_b_held),
+    countof(up_b_spam),
 };
 
 typedef enum {
