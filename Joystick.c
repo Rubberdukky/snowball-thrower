@@ -174,17 +174,17 @@ static const command command_setup[] = {
 static const command randomDI_airdodge[] = {
     PRESS(LEFT,          1),
     PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
+    PRESS(LEFT_BUMPER,   1),
 };
 
 static const command rightDI_airdodge[] = {
     PRESS(RIGHT,         1),
-    PRESS(BUMPERS,       1),
+    PRESS(LEFT_BUMPER,   1),
 };
 
 static const command leftDI_airdodge[] = {
     PRESS(LEFT,          1),
-    PRESS(BUMPERS,       1),
+    PRESS(LEFT_BUMPER,   1),
 };
 
 static const command shield[] = {
@@ -206,9 +206,17 @@ static const command up_b_spam[] = {
     PRESS(NOTHING, 10),
 };
 
+static const command spam_airdodge[] = {
+    PRESS(LEFT_BUMPER, 5)
+    PRESS(NOTHING,     5)
+}
+
 static const command* program_order[] = {
     shield,
+    spam_airdodge,
     randomDI_airdodge,
+    leftDI_airdodge,
+    rightDI_airdodge,
     neutral_b_held,
     up_b_spam,
 };
